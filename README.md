@@ -1,8 +1,8 @@
 
-<h1 align="center">OFJDBC — JDBC Driver for Oracle Fusion Cloud</h1>
+<h1 align="center">SQL Developer experience for Oracle Fusion Cloud</h1>
 
 <p align="center">
-  <strong>Run SQL queries directly against Oracle Fusion. Free. Open-source. No OTBI required.</strong>
+  <strong>Run SQL queries directly against Oracle Fusion. Free. Open-source.</strong>
 </p>
 
 <p align="center">
@@ -19,7 +19,6 @@
   <a href="#-documentation">Docs</a>
 </p>
 
-
 <!--[![GitHub Downloads](https://img.shields.io/github/downloads/krokozyab/ofjdbc/total?style=for-the-badge&logo=github)](https://github.com/krokozyab/ofjdbc/releases)-->
 
 ## The Problem
@@ -27,6 +26,12 @@
 Oracle Fusion Cloud doesn't allow direct database connections. Developers and consultants are forced to use **OTBI** (limited subject areas, 65K row cap), **BI Publisher** (tiny SQL editor, multi-step process), or **paid third-party tools** — just to run a simple `SELECT` query.
 
 **OFJDBC fixes this.** It's a lightweight JDBC driver that translates standard SQL into SOAP requests against Oracle Fusion's BI layer. Plug it into DBeaver, IntelliJ, or any JDBC-compatible tool — and query Oracle Fusion tables like a normal database.
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=7HQwmzQriRM">
+    <img src="https://img.youtube.com/vi/7HQwmzQriRM/maxresdefault.jpg" alt="OFJDBC Oracle Fusion SQL query tool" width="800">
+  </a>
+</p>
+
 
 ## ✨ Why OFJDBC
 
@@ -87,26 +92,29 @@ Upload `otbireport/DM_ARB.xdm.catalog` and `RP_ARB.xdo.catalog` to
 
 ## 🌐 Ecosystem
 
-OFJDBC is the foundation of a complete open-source platform for Oracle Fusion data access:
+Two ways into the same data: a JDBC driver for the JVM world, and an Oracle Net endpoint for everything that speaks to an Oracle database. Both talk to Fusion through the same documented BI Publisher service.
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                     AI / LLM Layer                       │
-│  ofrag — MCP Server for Claude, Gemini, any LLM          │
-│  Semantic search · SQL validation · Natural language     │
-├──────────────────────────────────────────────────────────┤
-│                    Data Access Layer                     │
-│  OFJDBC (JDBC)                                           │
-│  JVM, DBeaver, Airflow, any JDBC-compatible tool         │
-├──────────────────────────────────────────────────────────┤
-│                  Oracle Fusion Cloud                     │
-│              BI Publisher SOAP Web Services              │
-└──────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│                       AI / LLM Layer                       │
+│       ofrag — MCP Server for Claude, Gemini, any LLM       │
+│    Semantic search · SQL validation · Natural language     │
+├────────────────────────────────────────────────────────────┤
+│                     Data Access Layer                      │
+├──────────────────────────┬─────────────────────────────────┤
+│ OFJDBC (JDBC)            │ oratofusionproxy (Oracle Net)   │
+│ JVM, DBeaver, Airflow,   │ SQL Developer, Excel,           │
+│ any JDBC tool            │ Power BI, sqlplus, dblink       │
+├──────────────────────────┴─────────────────────────────────┤
+│                    Oracle Fusion Cloud                     │
+│               BI Publisher SOAP Web Services               │
+└────────────────────────────────────────────────────────────┘
 ```
 
 | Project | What it does | Link |
 |---|---|---|
 | **OFJDBC** | JDBC driver — SQL access from DBeaver, IntelliJ, JVM apps | [GitHub](https://github.com/krokozyab/ofjdbc) |
+| **oratofusionproxy** | Oracle Net/TNS proxy — Fusion as a real Oracle database for SQL Developer, Excel, Power BI and `dblink` from EBS | [GitHub](https://github.com/krokozyab/oracle-fusion-tns-proxy) |
 | **ofrag** | AI RAG engine & MCP Server — natural language queries via Claude/Gemini | [GitHub](https://github.com/krokozyab/ofrag) |
 
 ## 💡 Use Cases
