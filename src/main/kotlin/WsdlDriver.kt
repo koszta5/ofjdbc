@@ -26,22 +26,16 @@ class WsdlDriver : Driver {
         val user = props.getProperty("user") ?: ""
         val pass = props.getProperty("password") ?: ""
         wsdlEndpoint = "https:" + parts[2]
-        // Strip any query-style parameters (e.g. ?oauthProviderClass=..., ?authType=...) from the report path.
-        reportPath = parts.getOrElse(3) { "/Custom/Financials/RP_ARB.xdo" }.substringBefore("?")
+        // Strip any query-style parameters (e.g. ?WSDL:/path&oauthProviderClass=...&authType=...) from the report path.
+        reportPath = parts.getOrElse(3) { "/Custom/Financials/RP_ARB.xdo" }.substringBefore("&")
 
         // Optional OAuth: instantiate the configured provider via reflection and register an
-        // OAuth Bearer authenticator for this endpoint. Core request logic stays untouched.
+        // OAuth authenticator for this endpoint. Core request logic stays untouched.
         val oauthProviderClass = extractUrlParam(url, "oauthProviderClass")
             ?: props.getProperty("oauthProviderClass")
         if (!oauthProviderClass.isNullOrBlank()) {
             try {
-                val instance = Class.forName(oauthProviderClass.trim())
-                    .getDeclaredConstructor()
-                    .newInstance()
-                val provider = instance as? OAuthProvider
-                    ?: throw java.sql.SQLException(
-                        "Class '$oauthProviderClass' does not implement my.jdbc.wsdl_driver.OAuthProvider"
-                    )
+                val provider = loadOAuthProvider(oauthProviderClass, wsdlEndpoint, user, pass)
                 AuthenticatorRegistry.register(wsdlEndpoint, OAuthAuthenticator(provider))
                 logger.info("Registered OAuth provider '{}' for endpoint {}", oauthProviderClass, wsdlEndpoint)
             } catch (e: java.sql.SQLException) {
@@ -53,6 +47,58 @@ class WsdlDriver : Driver {
 
         logger.info("Connecting to WSDL-based database with user: $user")
         return WsdlConnection(wsdlEndpoint, user, pass, reportPath)
+    }
+
+    /** Extracts a query parameter value from URL. Only supports '&' as separator (standard URL format).
+     *  Example: `?WSDL:/path&oauthProviderClass=value&authType=BROWSER` → extracts `value` for `oauthProviderClass`
+     */
+    private fun extractUrlParam(url: String, name: String): String? =
+        Regex("&" + Regex.escape(name) + "=([^&]+)").find(url)?.groupValues?.get(1)
+
+    private fun loadOAuthProvider(
+        className: String,
+        wsdlEndpoint: String,
+        user: String,
+        pass: String
+    ): OAuthProvider {
+        val providerClassName = className.trim()
+        val providerClass = loadClass(providerClassName)
+        val instance = providerClass
+            .getDeclaredConstructor(String::class.java, String::class.java, String::class.java)
+            .apply { isAccessible = true }
+            .newInstance(wsdlEndpoint, user, pass)
+
+        // Direct match: the provider class was loaded by a class loader that shares our OAuthProvider type.
+        (instance as? OAuthProvider)?.let { return it }
+
+        // Hierarchical class loading in application containers can yield an object that implements a
+        // *different* OAuthProvider Class object. Fall back to structural (duck-typed) matching.
+        val mismatches = mutableListOf<String>()
+        OAuthProviderWrapper.wrapIfCompatible(instance, mismatches)?.let { wrapper ->
+            logger.trace(
+                "Class '{}' does not implement {} (likely a separate class loader); using reflective wrapper",
+                providerClassName,
+                OAuthProvider::class.java.name
+            )
+            return wrapper
+        }
+
+        throw java.sql.SQLException(
+            "Class '$className' does not implement ${OAuthProvider::class.java.name} and is not " +
+                "structurally compatible with it: ${mismatches.joinToString("; ")}"
+        )
+    }
+
+    private fun loadClass(className: String): Class<*> {
+        val contextClassLoader = Thread.currentThread().contextClassLoader
+        if (contextClassLoader != null) {
+            try {
+                return Class.forName(className, true, contextClassLoader)
+            } catch (_: ClassNotFoundException) {
+                // Fall back to the driver's class loader below.
+            }
+        }
+        return Class.forName(className)
     }
 
     /** Extracts a query-style parameter value (e.g. `?name=value` or `&name=value`) from the URL. */
