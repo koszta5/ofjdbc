@@ -101,6 +101,10 @@ class WsdlDriver : Driver {
         return Class.forName(className)
     }
 
+    /** Extracts a query-style parameter value (e.g. `?name=value` or `&name=value`) from the URL. */
+    private fun extractUrlParam(url: String, name: String): String? =
+        Regex("[?&]" + Regex.escape(name) + "=([^?&]+)").find(url)?.groupValues?.get(1)
+
     override fun acceptsURL(url: String?): Boolean =
         url?.startsWith("jdbc:wsdl://") ?: false
 
