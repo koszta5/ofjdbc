@@ -6,6 +6,8 @@ import org.w3c.dom.Element
 import org.w3c.dom.Node
 import org.w3c.dom.NodeList
 import org.xml.sax.InputSource
+import java.io.ByteArrayInputStream
+import java.io.IOException
 import java.io.StringReader
 import java.io.StringWriter
 import java.net.URI
@@ -16,6 +18,7 @@ import java.time.Duration
 import java.sql.ResultSet
 import java.sql.SQLException
 import java.util.Base64
+import java.util.zip.GZIPInputStream
 import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.transform.OutputKeys
 import javax.xml.transform.TransformerFactory
@@ -125,11 +128,11 @@ fun createSoapEnvelope(sql: String, reportPath: String): String {
 fun extractSoapError(body: String): String {
     return try {
         val doc = parseXml(body)
-        val faultNodes = doc.getElementsByTagName("Fault")
+        val faultNodes = doc.getElementsByTagNameNS("*", "Fault")
         if (faultNodes.length > 0) {
             val fault = faultNodes.item(0) as Element
-            val faultStringNodes = fault.getElementsByTagName("faultstring")
-            val faultCodeNodes = fault.getElementsByTagName("faultcode")
+            val faultStringNodes = fault.getElementsByTagNameNS("*", "faultstring")
+            val faultCodeNodes = fault.getElementsByTagNameNS("*", "faultcode")
             val faultString = if (faultStringNodes.length > 0) faultStringNodes.item(0).textContent else "Unknown"
             val faultCode = if (faultCodeNodes.length > 0) faultCodeNodes.item(0).textContent else "Unknown"
             "SOAP Fault - Code: $faultCode, Message: $faultString"
@@ -149,7 +152,12 @@ fun extractSoapFaultReason(body: String): String {
         if (reasonNodes.length > 0) {
             reasonNodes.item(0).textContent.trim()
         } else {
-            "No fault reason found"
+            val faultStringNodes = doc.getElementsByTagNameNS("*", "faultstring")
+            if (faultStringNodes.length > 0) {
+                faultStringNodes.item(0).textContent.trim()
+            } else {
+                "No fault reason found"
+            }
         }
     } catch (e: Exception) {
         "Error parsing SOAP fault: ${e.message}"
@@ -170,10 +178,32 @@ fun parseXml(xml: String): Document {
     return try {
         tryParse(xml)
     } catch (e: org.xml.sax.SAXParseException) {
-        // Only apply cleaning if the initial parse fails
-        parseXmlWithCleaning(xml)
+        try {
+            // Only apply cleaning if the initial parse fails
+            parseXmlWithCleaning(xml)
+        } catch (cleaningException: org.xml.sax.SAXParseException) {
+            e.addSuppressed(cleaningException)
+            throw xmlParsingException(xml, e)
+        }
     }
 }
+
+private fun xmlParsingException(
+    xml: String,
+    cause: org.xml.sax.SAXParseException
+): SQLException {
+    val response = xml
+    return SQLException(
+        "XML parsing failed.\n\n" +
+            "Reason:\n${cause.message}\n\n" +
+            "Line:\n${cause.lineNumber}\n\n" +
+            "Column:\n${cause.columnNumber}\n\n" +
+            "Response:\n$response",
+        cause
+    )
+}
+
+
 
 private fun parseXmlWithCleaning(xml: String): Document {
     //  Pre‑clean: escape stray '&' that are not part of an entity
@@ -415,10 +445,21 @@ private fun sendSqlViaWsdlInternal(
         .POST(HttpRequest.BodyPublishers.ofString(soapEnvelope))
         .build()
     
-    val response = HttpClientManager.httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+    val response = HttpClientManager.httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray())
     val status = response.statusCode()
-    val body = response.body()
-    
+    val bodyBytes = response.body()
+    val contentEncoding = response.headers().firstValue("Content-Encoding").orElse("")
+    val decodedBytes = if (contentEncoding.split(',').any { it.trim().equals("gzip", ignoreCase = true) }) {
+        try {
+            GZIPInputStream(ByteArrayInputStream(bodyBytes)).use { it.readBytes() }
+        } catch (e: IOException) {
+            throw SQLException("Unable to decompress gzip response from WSDL service ($status)", e)
+        }
+    } else {
+        bodyBytes
+    }
+    val body = String(decodedBytes, Charsets.UTF_8)
+
     // Check for retryable HTTP status codes
     if (isRetryableHttpStatus(status)) {
         throw SQLException("WSDL service returned retryable error ($status): $body")
@@ -436,17 +477,34 @@ private fun sendSqlViaWsdlInternal(
     }
     
     val doc = parseXml(body)
+    val faultNodes = doc.getElementsByTagNameNS("*", "Fault")
+    if (faultNodes.length > 0) {
+        val fault = faultNodes.item(0) as Element
+        val reasonNodes = fault.getElementsByTagNameNS(
+            "http://www.w3.org/2003/05/soap-envelope",
+            "Text"
+        )
+        val messageNodes = fault.getElementsByTagNameNS("*", "faultstring")
+        val faultMessage = when {
+            reasonNodes.length > 0 -> reasonNodes.item(0).textContent.trim()
+            messageNodes.length > 0 -> messageNodes.item(0).textContent.trim()
+            else -> "Fusion returned a SOAP Fault"
+        }
+        throw SQLException(
+            "WSDL service error ($status): $faultMessage\nResponse:\n$body"
+        )
+    }
     if (status == 200) {
         val reportNode = findNodeEndingWith(doc.documentElement, "reportBytes")
         if (reportNode != null) {
             val base64Str = reportNode.textContent.trim()
             return decodeBase64(base64Str)
         } else {
-            throw SQLException("Invalid response format: No reportBytes found")
+            throw SQLException("Invalid response format: No reportBytes found\nResponse:\n$body")
         }
     } else {
         val errorMessage = extractSoapFaultReason(body)
-        throw SQLException("WSDL service error ($status): $errorMessage")
+        throw SQLException("WSDL service error ($status): $errorMessage\nResponse:\n$body")
     }
 }
 
