@@ -24,7 +24,6 @@ import javax.xml.transform.OutputKeys
 import javax.xml.transform.TransformerFactory
 import javax.xml.transform.dom.DOMSource
 import javax.xml.transform.stream.StreamResult
-import my.jdbc.wsdl_driver.SecuredViewMappings
 
 val logger = LoggerFactory.getLogger("Utils")
 
@@ -192,15 +191,37 @@ private fun xmlParsingException(
     xml: String,
     cause: org.xml.sax.SAXParseException
 ): SQLException {
-    val response = xml
+    val problematicLine = cause.lineNumber
+        .takeIf { it > 0 }
+        ?.let { lineNumber ->
+            xml.lineSequence().drop(lineNumber - 1).firstOrNull()?.let(::escapeXml)
+        }
+        .orEmpty()
     return SQLException(
         "XML parsing failed.\n\n" +
             "Reason:\n${cause.message}\n\n" +
             "Line:\n${cause.lineNumber}\n\n" +
             "Column:\n${cause.columnNumber}\n\n" +
-            "Response:\n$response",
+            "Problematic line:\n$problematicLine",
         cause
     )
+}
+
+
+
+fun escapeXml(text: String): String {
+    val doc: Document = DocumentBuilderFactory.newInstance()
+        .newDocumentBuilder()
+        .newDocument()
+
+    val node = doc.createTextNode(text)
+
+    val writer = StringWriter()
+    TransformerFactory.newInstance()
+        .newTransformer()
+        .transform(DOMSource(node), StreamResult(writer))
+
+    return writer.toString()
 }
 
 
