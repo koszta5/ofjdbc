@@ -6,6 +6,7 @@ import org.w3c.dom.Element
 import org.w3c.dom.Node
 import org.w3c.dom.NodeList
 import org.xml.sax.InputSource
+import org.xml.sax.SAXParseException
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.StringReader
@@ -191,20 +192,45 @@ private fun xmlParsingException(
     xml: String,
     cause: org.xml.sax.SAXParseException
 ): SQLException {
+    return SQLException(xmlParsingMessage(xml, cause), cause)
+}
+
+private fun xmlParsingException(
+    xml: String,
+    cause: SAXParseException,
+    stage: Int
+): SAXParseException {
+    return SAXParseException(
+        xmlParsingMessage(xml, cause, stage),
+        cause.publicId,
+        cause.systemId,
+        cause.lineNumber,
+        cause.columnNumber,
+        cause
+    )
+}
+
+private fun xmlParsingMessage(
+    xml: String,
+    cause: SAXParseException,
+    stage: Int? = null
+): String {
     val problematicLine = cause.lineNumber
         .takeIf { it > 0 }
         ?.let { lineNumber ->
             xml.lineSequence().drop(lineNumber - 1).firstOrNull()?.let(::escapeXml)
         }
         .orEmpty()
-    return SQLException(
-        "XML parsing failed.\n\n" +
-            "Reason:\n${cause.message}\n\n" +
-            "Line:\n${cause.lineNumber}\n\n" +
-            "Column:\n${cause.columnNumber}\n\n" +
-            "Problematic line:\n$problematicLine",
-        cause
-    )
+    return buildString {
+        append(
+            "XML parsing failed.\n\n" +
+                "Reason:\n${cause.message}\n\n" +
+                "Line:\n${cause.lineNumber}\n\n" +
+                "Column:\n${cause.columnNumber}\n\n" +
+                "Problematic line:\n$problematicLine"
+        )
+        if (stage != null) append("\n\nCleaning stage: $stage")
+    }
 }
 
 
@@ -264,9 +290,28 @@ private fun parseXmlWithCleaning(xml: String): Document {
     val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
     val builder = factory.newDocumentBuilder()
 
+    var parseAttempts = 0
+    var previousFailure: SAXParseException? = null
+
     fun tryParse(text: String): Document {
         return StringReader(text).use { reader ->
             builder.parse(InputSource(reader))
+        }
+    }
+
+    fun wrapParseFailure(cause: SAXParseException, stage: Int): SAXParseException {
+        val wrapped = xmlParsingException(xml, cause, stage)
+        previousFailure?.let(wrapped::addSuppressed)
+        previousFailure = wrapped
+        return wrapped
+    }
+
+    fun tryParseAtStage(text: String): Document {
+        val stage = ++parseAttempts
+        return try {
+            tryParse(text)
+        } catch (e: SAXParseException) {
+            throw wrapParseFailure(e, stage)
         }
     }
 
@@ -323,8 +368,8 @@ private fun parseXmlWithCleaning(xml: String): Document {
 
     //  Fast path – try to parse as‑is
     return try {
-        tryParse(candidate)
-    } catch (e: org.xml.sax.SAXParseException) {
+        tryParseAtStage(candidate)
+    } catch (e: SAXParseException) {
         // --- second‑pass sanitiser: escape < and > that occur *between* tags
         val tagPlusText = Regex("(<[^>]+>)([^<]*[<>][^<]*)(?=<)").replace(candidate) { m ->
             val openTag  = m.groupValues[1]
@@ -344,10 +389,15 @@ private fun parseXmlWithCleaning(xml: String): Document {
         )
 
         return try {
-            tryParse(sanitized)
-        } catch (_: org.xml.sax.SAXParseException) {
+            tryParseAtStage(sanitized)
+        } catch (_: SAXParseException) {
             val fallback = escapeOutsideTags(candidate)
-            tryParse(fallback)
+            val stage = ++parseAttempts
+            try {
+                tryParse(fallback)
+            } catch (finalException: SAXParseException) {
+                throw wrapParseFailure(finalException, stage)
+            }
         }
     }
 }
