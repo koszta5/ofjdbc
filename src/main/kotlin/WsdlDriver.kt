@@ -24,13 +24,21 @@ class WsdlDriver : Driver {
         val user = info.getProperty("user")
         val pass = info.getProperty("password")
         wsdlEndpoint = "https:" + parts[2]
+        val allowExponentialNumbers = extractUrlParam(url, "numbers.allowExponential")?.toBoolean() ?: true
         reportPath = parts.getOrElse(3) { "/Custom/Financials/RP_ARB.xdo" }
         if (url.startsWith("jdbc:wsdl://")) {
             logger.info("Connecting to WSDL-based database with user: $user")
-            return WsdlConnection(wsdlEndpoint, user, pass, reportPath)
+            return WsdlConnection(wsdlEndpoint, user, pass, reportPath, allowExponentialNumbers)
         }
         return null
     }
+
+    /** Extracts a query parameter value from URL. Only supports '&' as separator (standard URL format).
+     *  Example: `?WSDL:/path&oauthProviderClass=value&authType=BROWSER` → extracts `value` for `oauthProviderClass`
+     */
+    private fun extractUrlParam(url: String, name: String): String? =
+        Regex("&" + Regex.escape(name) + "=([^&]+)").find(url)?.groupValues?.get(1)
+
 
     override fun acceptsURL(url: String?): Boolean =
         url?.startsWith("jdbc:wsdl://") ?: false

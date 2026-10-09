@@ -9,9 +9,7 @@ import java.io.InputStream
 import java.io.Reader
 import java.math.BigDecimal
 import java.math.RoundingMode
-import java.net.URL
 import java.sql.*
-import java.sql.Array
 import java.sql.Date
 import java.sql.SQLException
 import java.sql.Time
@@ -21,7 +19,6 @@ import java.util.*
 import java.io.Closeable
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
-import java.util.Base64
 import java.sql.SQLFeatureNotSupportedException
 import java.sql.NClob
 
@@ -49,6 +46,7 @@ class PaginatedResultSet(
     private val username: String,
     private val password: String,
     private val reportPath: String,
+    private val allowExponentialNumbers: Boolean,
     private var fetchSize: Int,
     private val logger: Logger,
     private val resource: Closeable? = null   // optional underlying stream/response
@@ -304,7 +302,7 @@ class PaginatedResultSet(
         return when {
             value!!.matches(Regex("^-?\\d+$"))            -> value.toLong()
             value.matches(Regex("^-?\\d+\\.\\d+$"))       -> value.toDouble()
-            value.matches(Regex("^-?\\d+\\.?\\d*[Ee][+-]?\\d+$")) -> value.toDouble()
+            allowExponentialNumbers && value.matches(Regex("^-?\\d+\\.?\\d*[Ee][+-]?\\d+$")) -> value.toDouble()
             else                                          -> value
         }
     }

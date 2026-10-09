@@ -20,7 +20,6 @@ import java.sql.Statement
 import java.sql.SQLFeatureNotSupportedException
 import java.sql.SQLException
 import java.util.regex.Pattern
-import java.util.regex.Matcher
 import java.sql.ResultSetMetaData
 import java.sql.RowId
 import java.sql.SQLXML
@@ -33,7 +32,8 @@ open class WsdlStatement(
     private val wsdlEndpoint: String,
     private val username: String,
     private val password: String,
-    private val reportPath: String
+    private val reportPath: String,
+    private val allowExponentialNumbers: Boolean
 ) : Statement {
 
     // Field to store the last ResultSet produced.
@@ -169,7 +169,8 @@ open class WsdlStatement(
             password = password,
             reportPath = reportPath,
             fetchSize = effectiveFetchSize,
-            logger = logger
+            logger = logger,
+            allowExponentialNumbers = allowExponentialNumbers
         )
         lastResultSet = paginatedRs
         return paginatedRs
