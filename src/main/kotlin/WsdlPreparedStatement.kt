@@ -58,7 +58,7 @@ class WsdlPreparedStatement(
     username: String,
     password: String,
     reportPath: String
-) : WsdlStatement(wsdlEndpoint, username, password, reportPath), PreparedStatement {
+) : WsdlStatement(wsdlEndpoint, username, password, reportPath, allowExponentialNumbers), PreparedStatement {
 
     private val logger = LoggerFactory.getLogger(WsdlPreparedStatement::class.java)
     // Cache for ResultSetMetaData to avoid repeated calls
