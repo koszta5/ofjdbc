@@ -21,7 +21,8 @@ class WsdlPreparedStatement(
     wsdlEndpoint: String,
     username: String,
     password: String,
-    reportPath: String
+    reportPath: String,
+    allowExponentialNumbers: Boolean
 ) : WsdlStatement(wsdlEndpoint, username, password, reportPath, allowExponentialNumbers), PreparedStatement {
 
     private val logger = LoggerFactory.getLogger(WsdlPreparedStatement::class.java)
