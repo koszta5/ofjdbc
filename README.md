@@ -69,6 +69,8 @@ Upload `otbireport/DM_ARB.xdm.catalog` and `RP_ARB.xdo.catalog` to
 | **Driver Class** | `my.jdbc.wsdl_driver.WsdlDriver` |
 | **Authentication** | Fusion Username & Password **or** Browser SSO (`?authType=BROWSER`) |
 
+To keep values in scientific notation as strings instead of converting them to `Double`, append `&numbers.allowExponential=false` to the JDBC URL. The default is `true`, which converts scientific-notation values to `Double`. Be careful as keeping the default may lead to values Infinity for plain strings like "9999E999999". This is a standard string value in some cases but can cause wrong interpretation if converted to `Double`.
+
 ### 4. Query
 <p align="center">
   <img src="pics/formatted_sql.png" alt="OFJDBC — SQL queries in DBeaver against Oracle Fusion" width="700"/>
