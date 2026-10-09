@@ -27,6 +27,7 @@ class WsdlDriver : Driver {
         val pass = props.getProperty("password") ?: ""
         wsdlEndpoint = "https:" + parts[2]
         // Strip any query-style parameters (e.g. ?WSDL:/path&oauthProviderClass=...&authType=...) from the report path.
+        val allowExponentialNumbers = extractUrlParam(url, "numbers.allowExponential")?.toBoolean() ?: true
         reportPath = parts.getOrElse(3) { "/Custom/Financials/RP_ARB.xdo" }.substringBefore("&")
 
         // Optional OAuth: instantiate the configured provider via reflection and register an
@@ -46,14 +47,9 @@ class WsdlDriver : Driver {
         }
 
         logger.info("Connecting to WSDL-based database with user: $user")
-        return WsdlConnection(wsdlEndpoint, user, pass, reportPath)
+        return WsdlConnection(wsdlEndpoint, user, pass, reportPath, allowExponentialNumbers)
     }
 
-    /** Extracts a query parameter value from URL. Only supports '&' as separator (standard URL format).
-     *  Example: `?WSDL:/path&oauthProviderClass=value&authType=BROWSER` → extracts `value` for `oauthProviderClass`
-     */
-    private fun extractUrlParam(url: String, name: String): String? =
-        Regex("&" + Regex.escape(name) + "=([^&]+)").find(url)?.groupValues?.get(1)
 
     private fun loadOAuthProvider(
         className: String,
@@ -100,6 +96,13 @@ class WsdlDriver : Driver {
         }
         return Class.forName(className)
     }
+
+    /** Extracts a query parameter value from URL. Only supports '&' as separator (standard URL format).
+     *  Example: `?WSDL:/path&oauthProviderClass=value&authType=BROWSER` → extracts `value` for `oauthProviderClass`
+     */
+    private fun extractUrlParam(url: String, name: String): String? =
+        Regex("&" + Regex.escape(name) + "=([^&]+)").find(url)?.groupValues?.get(1)
+
 
     override fun acceptsURL(url: String?): Boolean =
         url?.startsWith("jdbc:wsdl://") ?: false

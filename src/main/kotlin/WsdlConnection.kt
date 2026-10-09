@@ -12,7 +12,8 @@ class WsdlConnection(
     val wsdlEndpoint: String,
     val username: String,
     val password: String,
-    val reportPath: String
+    val reportPath: String,
+    val allowExponentialNumbers: Boolean
 ) : Connection {
     init {
         require(wsdlEndpoint.isNotBlank()) { "wsdlEndpoint must not be blank" }
@@ -36,7 +37,7 @@ class WsdlConnection(
     private var closed: Boolean = false
 
     override fun createStatement(): Statement =
-        WsdlStatement(wsdlEndpoint, username, password, reportPath)
+        WsdlStatement(wsdlEndpoint, username, password, reportPath, allowExponentialNumbers)
 
     override fun close() {
         if (closed) return          // already closed – do nothing
