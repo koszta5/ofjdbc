@@ -215,19 +215,25 @@ private fun xmlParsingMessage(
     cause: SAXParseException,
     stage: Int? = null
 ): String {
-    val problematicLine = cause.lineNumber
-        .takeIf { it > 0 }
-        ?.let { lineNumber ->
-            xml.lineSequence().drop(lineNumber - 1).firstOrNull()?.let(::escapeXml)
-        }
-        .orEmpty()
+    val lines = xml.lines()
+    val problematicLineIndex = cause.lineNumber
+    val problematicLine = lines.getOrNull(problematicLineIndex).orEmpty()
+    val problematicLineSurrounding = if (problematicLineIndex in lines.indices) {
+        lines.subList(
+            maxOf(0, problematicLineIndex - 2),
+            minOf(lines.size, problematicLineIndex + 3)
+        ).joinToString("\n")
+    } else {
+        ""
+    }
     return buildString {
         append(
             "XML parsing failed.\n\n" +
                 "Reason:\n${cause.message}\n\n" +
                 "Line:\n${cause.lineNumber}\n\n" +
                 "Column:\n${cause.columnNumber}\n\n" +
-                "Problematic line:\n$problematicLine"
+                "Problematic line:\n$problematicLine\n\n" +
+                "Problematic line surrounding:\n$problematicLineSurrounding"
         )
         if (stage != null) append("\n\nCleaning stage: $stage")
     }
@@ -245,6 +251,7 @@ fun escapeXml(text: String): String {
     val writer = StringWriter()
     TransformerFactory.newInstance()
         .newTransformer()
+        .apply { setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes") }
         .transform(DOMSource(node), StreamResult(writer))
 
     return writer.toString()
